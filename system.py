@@ -11,64 +11,9 @@ class System:
         self.coordinates = (x, y)
         self.resources = 0
         self.infrastructure_level = 1
-        self.ruling_civilization: Civilization | None = None
+        self.civ_id: int | None
         self.orbiting_fleets: list[Fleet] = []
 
-        # Fleets and the remaining hops they have to take
-        TravelPath: TypeAlias = list[tuple[System, System]]
-        self.fleet_queue: list[tuple[int, Fleet, TravelPath]] = []
-
-        self.rebel_cooldown = 0
-        self.rebel_groups: list[RebelGroup] = []
-
-    def set_ruling_civilization(self, civilization: Civilization | None) -> None:
-        if self.ruling_civilization:
-            self.ruling_civilization.reachable_systems = []  # Invalidate cache
-            self.ruling_civilization.systems.remove(self)
-        self.ruling_civilization = civilization
-        if civilization:
-            civilization.reachable_systems = []  # Invalidate cache
-            civilization.systems.add(self)
-
-    def process_rebels(self) -> None:
-        if self.rebel_cooldown > 0 or len(self.rebel_groups) == 0:
-            return
-
-        # Pick rebel group based on (1 - happiness) * pop_size
-        rebel_group = random.choice(self.rebel_groups)
-
-        # Rebel groups can be leaderless, or they can have a leader. If leaderless, they
-        # are far more likely to rebel spontaneously, i.e. if unhappiness * size reaches
-        # a certain threshold. If they have a leader, the leader can trigger the
-        # rebellion if they deem the conditions right.
-        # The downside of having a leader is that they may be discovered and killed,
-        # which might lead to the dissolution of the rebel group.
-
-    def build_ships(self) -> None:
-        # Nothing gets built if this is not inhabited
-        if not self.ruling_civilization:
-            return
-
-        if not self.orbiting_fleets:
-            self.orbiting_fleets.append(Fleet(self.ruling_civilization, 1))
-        else:
-            # If this is inhabited, ours should be the only fleet here
-            self.orbiting_fleets[0].size += self.infrastructure_level
-
-    def distance_to(self, other: System) -> float:
-        x1, y1 = self.coordinates
-        x2, y2 = other.coordinates
-        return math.hypot(x2 - x1, y2 - y1)
-
-    def merge_fleets(self) -> None:
-        merged_fleets = {}
-        for fleet in self.orbiting_fleets:
-            if fleet.civilization not in merged_fleets:
-                merged_fleets[fleet.civilization] = fleet
-            else:
-                merged_fleets[fleet.civilization].size += fleet.size
-
-        self.orbiting_fleets = list(merged_fleets.values())
 
     def process_arriving_fleets(self) -> None:
 

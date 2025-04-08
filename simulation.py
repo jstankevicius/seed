@@ -93,6 +93,35 @@ class Simulation:
             Civilization(len(self.civilizations), system) for system in home_systems
         ]
 
+    def set_system_civ_id(self, sys: System, civ: Civilization | None) -> None:
+        if sys.civ_id:
+            self.civilizations[sys.civ_id].reachable_systems = []  # Invalidate cache
+            self.civilizations[sys.civ_id].systems.remove(sys.civ_id)
+
+        if civ:
+            sys.civ_id = civ.id
+            self.civilizations[civ.id].reachable_systems = []  # Invalidate cache
+            self.civilizations[civ.id].systems.add(sys.id)
+    
+    def system_build_ships(self, sys: System) -> None:
+        if not sys.civ_id:
+            return
+        
+        if not sys.orbiting_fleets:
+            sys.orbiting_fleets.append(Fleet(sys.civ_id, 1))
+        else:
+            sys.orbiting_fleets[0].size += sys.infrastructure_level
+
+    def system_merge_fleets(self, sys: System) -> None:
+        merged_fleets = {}
+        for fleet in sys.orbiting_fleets:
+            if fleet.civilization not in merged_fleets:
+                merged_fleets[fleet.civilization] = fleet
+            else:
+                merged_fleets[fleet.civilization].size += fleet.size
+
+        sys.orbiting_fleets = list(merged_fleets.values())
+
     def get_route(
         self, civ: Civilization, source: System, target: System
     ) -> list[tuple[System, System]]:
