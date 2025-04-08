@@ -22,6 +22,7 @@ from fleet import Fleet
 # Diplomacy? Truces/wars/peace deals
 # Better invasion planning. Build up fleets on borders, pick weakest point.
 
+
 class RebelGroup:
 
     def __init__(self):
@@ -38,16 +39,23 @@ class RebelGroup:
         # Truncate down to 0 if below certain value
         return raw_weight if raw_weight > 0.2 else 0
 
+
 class Simulation:
 
     def __init__(self):
+        # Time unit
         self.tick = 0
 
+        # Lists to iterate over
         self.systems = []
         self.civilizations = []
 
-        # Queue
+        # Fleet queue
         self.fleets = []
+
+        # Precomputed values
+        self.system_distances = []
+        self.systems_reachable_by_hop = {}  # int (hop range) -> dict[System, list[System]]
 
     def generate_galaxy(
         self,
@@ -68,13 +76,128 @@ class Simulation:
             angle = base_angle + random.uniform(-arm_spread, arm_spread)
             x = r * math.cos(angle)
             y = r * math.sin(angle)
-            self.systems.append(System(x, y))
+            self.systems.append(System(len(self.systems), x, y))
+
+        # Precompute distances between systems
+        for i in range(num_systems):
+            self.system_distances.append([])
+            for j in range(num_systems):
+                x1, y1 = self.systems[i].coordinates
+                x2, y2 = self.systems[j].coordinates
+                dist = math.hypot(x1 - x2, y1 - y2)
+                self.system_distances[i].append(dist)
 
         # Place (starting) civilizations
         home_systems = random.sample(self.systems, num_starting_civilizations)
-        self.civilizations = [Civilization(system) for system in home_systems]
+        self.civilizations = [
+            Civilization(len(self.civilizations), system) for system in home_systems
+        ]
 
-    def process_civilization(self, civilization: Civilization) -> None:
+    def get_route(
+        self, civ: Civilization, source: System, target: System
+    ) -> list[tuple[System, System]]:
+
+        def heuristic(system: System) -> float:
+            return self.system_distances[system.id][target.id]
+
+        adjacency = self.systems_reachable_by_hop[civ.ship_range]
+        dist = {system: float("inf") for system in self.systems}
+        previous = {system: None for system in self.systems}
+        dist[source] = 0
+
+        heap = [(0 + heuristic(source), 0, source)]  # (priority, distance, system)
+
+        while heap:
+            _, current_dist, current = heappop(heap)
+            if current == target:
+                break
+            if current_dist > dist[current]:
+                continue
+            for neighbor in adjacency[current]:
+                weight = current_dist + 1  # Each hop has a cost of 1
+                if weight < dist[neighbor]:
+                    dist[neighbor] = weight
+                    previous[neighbor] = current
+                    heappush(heap, (weight + heuristic(neighbor), weight, neighbor))
+
+        # Reconstruct the path
+        path_nodes = deque()
+        curr = target
+        while curr is not None:
+            path_nodes.appendleft(curr)
+            curr = previous[curr]
+
+        path_nodes = list(path_nodes)
+        edges = [(path_nodes[i], path_nodes[i + 1]) for i in range(len(path_nodes) - 1)]
+        return edges
+    
+    def get_adjacency_list_for_ship_range(self, ship_range: int) -> list[list[System]]:
+        # Use cached value if available
+        if ship_range in self.systems_reachable_by_hop:
+            return self.systems_reachable_by_hop[ship_range]
+        
+        self.systems_reachable_by_hop[ship_range] = {}
+
+        for sys1 in self.systems:
+            for sys2 in self.systems:
+                if sys1 is sys2:
+                    continue
+
+                if self.system_distances[sys1.id][sys2.id] <= ship_range:
+                    # Can change this to dict[System, list[System]]
+                    self.systems_reachable_by_hop[ship_range][sys1].append(sys2)
+        
+        return self.systems_reachable_by_hop[ship_range]
+
+    def get_civ_reachable_systems(self, civ: Civilization) -> list[System]:
+        # Cache is still valid
+        if civ.reachable_systems:
+            return civ.reachable_systems
+
+        # Cache has been invalidated (probably because civ.systems has changed)
+        civ.reachable_systems = [
+            system
+            for owned_system in civ.systems
+            for system in self.systems_reachable_by_hop[owned_system]
+            if system.civ_id != civ.id
+        ]
+        return civ.reachable_systems
+
+    def process_civilization(self, civ: Civilization) -> None:
+        # Pick a home system at random
+        if not civ.systems:
+            return
+
+        source: System = random.choice(list(self.systems))
+        reachable_systems = self.get_civ_reachable_systems(civ)
+
+        if not reachable_systems:
+            return
+
+        target = random.choice(reachable_systems)
+        if source == target:
+            print(f"Warning: Source {source} is the same as target {target}!")
+            return
+
+        # Send half of our ships to some reachable system that isn't ours
+        path = self.get_route(civ, source, target)
+        _, next_system = path[0]
+
+        # Divide fleet in half
+        if not source.orbiting_fleets:
+            print(f"Source system {source} has no available ships.")
+            return
+
+        source_fleet = source.orbiting_fleets[0]
+        new_fleet_size = source_fleet.size // 2
+        source_fleet.size -= new_fleet_size
+
+        # Send to first system in the path
+        # speed = distance / time -> time = distance / speed
+        fleet = Fleet(self, new_fleet_size)
+        arrival_tick = source.tick + int(source.distance_to(next_system) / fleet.speed)
+
+        heappush(next_system.fleet_queue, (arrival_tick, fleet, path))
         pass
 
     def process_system(self, system: System) -> None:

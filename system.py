@@ -1,12 +1,8 @@
 
 class System:
 
-    next_id = 0
-
-    def __init__(self, x: float, y: float):
-        self.id = System.next_id
-        System.registry.append(self)
-        System.next_id += 1
+    def __init__(self, system_id: int, x: float, y: float):
+        self.id = system_id
 
         # It is expected that all instances of System have the same tick value.
         self.tick = 0
@@ -24,13 +20,6 @@ class System:
 
         self.rebel_cooldown = 0
         self.rebel_groups: list[RebelGroup] = []
-
-    @classmethod
-    def by_id(cls, _id: int) -> System:
-        return System.registry[_id]
-
-    def process_pops(self) -> None:
-        pass
 
     def set_ruling_civilization(self, civilization: Civilization | None) -> None:
         if self.ruling_civilization:
