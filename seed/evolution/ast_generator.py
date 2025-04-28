@@ -20,44 +20,6 @@ from typing import Type
 from scope import Scope
 
 
-class System:
-    _coordinates: tuple[int, int]
-
-    def __init__(self, x: int, y: int):
-        self._coordinates = (x, y)
-
-    def is_friendly(self) -> bool:
-        return True
-
-
-class Galaxy:
-
-    _systems: list[System]
-
-    def __init__(self):
-        self._id = random.randint(1, 100)
-        self._systems = []
-
-    def other_systems(self) -> list[System]:
-        return self._systems
-
-    def my_system(self) -> System:
-        return System(0, 0)
-
-    def is_reachable(self, system: System) -> bool:
-        return True
-
-    def num_ships(self) -> int:
-        return 100
-
-    def num_resources(self) -> int:
-        return 200
-
-    def asdf(self) -> None:
-        print("hello from asdf()!", self._id)
-        return None
-
-
 class ASTGenerator:
 
     # scope stack

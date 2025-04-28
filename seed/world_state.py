@@ -16,16 +16,6 @@ class WorldState:
     def __init__(self):
         # self._components: dict[type(Component), EntityToComponentMap]
         self._components = defaultdict(self.EntityToComponentMap)
-        self._event_bus = EventBus()
-
-    def subscribe_event(self, event_type: type[Event], callback: callable) -> None:
-        self._event_bus.subscribe(event_type, callback)
-
-    def publish_event(self, event: Event) -> None:
-        self._event_bus.publish(event)
-
-    def dispatch_events(self) -> None:
-        self._event_bus.dispatch()
 
     def add_entity(self, *components) -> Entity:
         new_entity = Entity()
@@ -54,6 +44,16 @@ class WorldState:
 
     def get_entity_component(self, entity: Entity, component_type):
         return self._components[component_type].entity_map[entity]
+
+    def filter_entities(self, component_type, predicate=None):
+        """Return a list of entities containing a component_type for which predicate is
+        true.
+        """
+        for entity in self._components[component_type].entity_set:
+            if predicate is None or predicate(
+                self._components[component_type].entity_map[entity]
+            ):
+                yield entity
 
     def get_components(self, *component_types):
         # Return an entity and all the components belonging to that entity. Components
