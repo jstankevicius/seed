@@ -1,50 +1,67 @@
 from dataclasses import dataclass, field
+from collections import deque
+
+"""
+Access patterns:
+Really, everything (or nearly everything) relates to systems in some way.
+How do we do iterations over the game state in such a way that we minimize
+the number of iterations?
+Options:
+A) 1. go over each civ and its owned systems. build ships, route ships, etc.
+        Or go over each civ and... all systems. Then switch based on system ownership:
+            1. owned systems
+            2. systems owned by someone else
+            3. uncolonized systems
 
 
-# A basic entity
-class Entity:
-    _next_id: int = 0
+Defer things when possible. We should have a loop of update() -> make_decisions().
+Should we keep the event based system?
 
-    def __init__(self):
-        self.id = Entity._next_id
-        Entity._next_id += 1
+What happens if there is a system owner change and different modules need to react to
+it?
+e.g. update reachable systems, calculate diplomatic scores
 
-    def __hash__(self):
-        return self.id
+   civilizations
+systems      fleets
 
-    def __repr__(self):
-        return f"Entity({self.id})"
+characters?
 
-
-# Components
-class Component:
-    pass
+"""
 
 
-@dataclass
-class SystemComponent(Component):
-    owning_civ: Entity | None
+@dataclass(slots=True)
+class System:
+    idx: int
 
-    # Should this be its own component? Systems and fleets have positions, but
-    # fleet positions are calculated purely for the purposes of visualization.
+    # Access to this won't be needed very often, so we can afford the extra indirection
+    owning_civ_index: int | None
     position: tuple[float, float]
 
-    num_ships: int = 0
+    parked_fleets: list[int]
 
 
 @dataclass
-class CivilizationComponent(Component):
-    owned_systems: list[Entity] = field(default_factory=lambda: [])
+class Civilization:
+    idx: int
+
+    owned_systems: list[System] = field(default_factory=lambda: [])
     reachable_systems: list[Entity] | None = None
     ship_range: int = 8
 
 
 @dataclass
-class FleetComponent(Component):
-    owning_civ: Entity | None
+class Fleet:
+    idx: int
+
+    owning_civ: int | None
     size: int
+    parked_system: int | None
 
 
-@dataclass
-class ParkedFleetComponent(Component):
-    system: Entity
+@dataclass(slots=True)
+class Simulation:
+    systems: list[System] = field(default_factory=lambda: [])
+    civilizations: list[Civilization] = field(default_factory=lambda: [])
+
+    fleets: list[Fleet] = field(default_factory=lambda: [])
+    fleet_queue = deque()

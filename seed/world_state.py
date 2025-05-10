@@ -58,11 +58,12 @@ class WorldState:
     def get_components(self, *component_types):
         # Return an entity and all the components belonging to that entity. Components
         # are returned in the order specified in get_components.
-        entities = set.intersection(
-            *(self._components[t].entity_set for t in component_types)
-        )
 
-        for entity in entities:
-            yield entity, tuple(
-                self._components[t].entity_map[entity] for t in component_types
-            )
+        # Single-component case that we can optimize for.
+        if len(component_types) == 1:
+            comp_type = component_types[0]
+            m = self._components[comp_type].entity_map
+            l = [
+                (e, (c,)) for e, c in m.items()
+            ]
+            return l

@@ -4,18 +4,79 @@ import math
 
 from concurrent.futures import ThreadPoolExecutor, Future
 from typing import Generator
-
-from seed.world_state import WorldState
-from seed.common.base_types import *
-from seed.common.events import Event, EventBus, TinkerTaskStartedEvent
-from seed.systems import System, SystemSystem, RoutingSystem, CivilizationSystem
-
-import seed.common.utils as utils
+from dataclasses import dataclass
+from collections import deque
 
 import atomics
 
 NUM_SYSTEMS = 200
 NUM_STARTING_CIVILIZATIONS = 4
+
+"""In the presence of light-speed lag, how do you communicate? How do
+civilizations manage themselves across enormous distances?
+
+What protocol is needed to ensure survival?
+
+E.g. choosing when to rebel vs cooperate. How big can interstellar
+civilizations get when they use particular messaging protocols, and every
+system is decentralized?
+
+Turns the simulation from civ-centric to system-centric. Now every civilization
+is simply defined by a loose relational graph of systems. No need to hardcode
+story elements or anything like that.
+
+Systems:
+    resource extraction
+    where do resources go? To parent system?
+        what would they be used for if they were given to the colony?
+        why would a colony prefer that resources go to it instead of its parent?
+
+    what do relation graphs look like?
+    deep? i.e. each colony can have its own colonies
+        what advantages does this bring, if any?
+    flat? i.e. there is only one root -> colony connection. colonies cannot have their
+    own colonies.
+
+    what does a colony do when it's not receiving orders?
+        building up its infrastructure?
+        ...what do colonies do, in general?
+        ...what do systems do?
+            extract resources from their planet.
+            more resources = better
+            more resources = more infrastructure, more infrastructure = more ships,
+            more expansion -> more resources
+            a system wants to ensure
+                1) survival
+                2) given it survives, the maximum number of resources (and maximum
+                   level of infrastructure) available to it.
+"""
+
+
+@dataclass(slots=True)
+class System:
+    idx: int
+    position: tuple[float, float]
+    parked_fleets: list[int]
+
+
+@dataclass
+class Fleet:
+    idx: int
+
+    owning_civ: int | None
+    size: int
+    parked_system: int | None
+
+
+@dataclass(slots=True)
+class Simulation:
+    tick: int
+
+    systems: list[System] = field(default_factory=lambda: [])
+    civilizations: list[Civilization] = field(default_factory=lambda: [])
+
+    fleets: list[Fleet] = field(default_factory=lambda: [])
+    fleet_queue = deque()
 
 
 def generate_galaxy(
@@ -38,104 +99,25 @@ def generate_galaxy(
         yield (x, y)
 
 
-class Simulation:
-
-    def __init__(self):
-        self.world_state = WorldState()
-        self.event_bus = EventBus()
-        self.systems = []
-
-    def add_system(self, system_type: type[System]) -> None:
-        self.systems.append(system_type(self.world_state, self.event_bus))
+def process_fleets(s: Simulation) -> None:
+    """Process fleet arrivals.
+    """
+    while s.fleet_queue and s.fleet_queue[0][0] == s.tick:
+        _, fleet, path = heappop(s.fleet_queue)
 
 
-class TinkerTask(Simulation):
+def process_battles(s: Simulation) -> None:
+    pass
 
-    def __init__(self):
-        super().__init__()
+def run_simulation(n_iterations: int) -> None:
+    sim = Simulation()
 
-        # Set by self, read by parent simulation
-        self._iterations = atomics.atomic(4, atype=atomics.INT)
+    for _ in range(n_iterations):
+        process_fleets(s)
+        process_battles(s)
 
-    @property
-    def iterations(self):
-        return self._iterations
-
-    @iterations.getter
-    def iterations(self):
-        return self._iterations.load()
-
-    @iterations.setter
-    def iterations(self, value):
-        self._iterations.store(value)
-
-
-class MainSimulation(Simulation):
-
-    def __init__(self):
-        super().__init__()
-
-        self.tick = 0
-
-        self.executor = ThreadPoolExecutor(max_workers=os.process_cpu_count())
-        self.running_tasks: list[tuple[Simulation, Future]] = []
-
-        # XXX: Listen from downstream whenever a system tells us that we need to spawn
-        # a new sub-simulation.
-        self.event_bus.subscribe(TinkerTaskStartedEvent, self.spawn_tinker_task)
-
-    def initialize(self):
-        # Generate galaxy
-        systems = [
-            self.world_state.add_entity(
-                SystemComponent(owning_civ=None, position=(x, y))
-            )
-            for x, y in generate_galaxy(NUM_SYSTEMS)
-        ]
-
-        # Populate some initial systems
-        starting_systems = random.sample(systems, NUM_STARTING_CIVILIZATIONS)
-        civs = []
-
-        for system in starting_systems:
-            civ = self.world_state.add_entity(CivilizationComponent())
-            civs.append(civ)
-
-            utils.transfer_system_ownership(
-                self.world_state, self.event_bus, system, civ
-            )
-
-        print(len(systems))
-        print(len(civs))
-
-    # Maybe this should yield snapshots of the sim?
-    def run_loop(self, n_ticks: int) -> None:
-        print("Running simulation")
-        for system in self.systems:
-            print("Started system", system)
-            system.start()
-
-        for _ in range(n_ticks):
-            for system in self.systems:
-                system.update()
-
-            self.event_bus.dispatch()
-
-            # Adjust time
-            self.event_bus.advance_time()
-
-    # HACK:
-    def spawn_tinker_task(self, event: TinkerTaskStartedEvent) -> None:
-        print("Spawned a tinker task")
-        t = TinkerTask()
-        t.iterations += 1
-        print(t.iterations)
+        process_civs(s)
 
 
 if __name__ == "__main__":
-    s = MainSimulation()
-    s.initialize()
-    s.add_system(SystemSystem)
-    s.add_system(RoutingSystem)
-    s.add_system(CivilizationSystem)
-    s.run_loop(1000)
+    s = Simulation()

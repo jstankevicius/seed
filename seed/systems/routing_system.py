@@ -6,7 +6,12 @@ import math
 
 from seed.systems.base import System, handle
 from seed.world_state import WorldState
-from seed.common.base_types import Entity, SystemComponent, CivilizationComponent
+from seed.common.base_types import (
+    Entity,
+    SystemComponent,
+    CivilizationComponent,
+    FleetComponent,
+)
 from seed.common.events import (
     EventBus,
     SystemOwnerChangedEvent,
@@ -82,12 +87,14 @@ class RoutingSystem(System):
         ]
         return civ.reachable_systems
 
-    def get_route(self, civ, source, target):
+    def get_route(self, fleet, source, target):
         def heuristic(system: Entity) -> float:
             return self.get_distance(system, target)
 
+        e_civ = self.w.get_entity_component(fleet, FleetComponent).owning_civ
+        civ = self.w.get_entity_component(e_civ, CivilizationComponent)
         dist = {entity: float("inf") for entity, _ in self.systems}
-        previous = {system: None for system in self.systems}
+        previous = {entity: None for entity, _ in self.systems}
         dist[source] = 0
 
         heap = [(0 + heuristic(source), 0, source)]  # (priority, distance, system)
